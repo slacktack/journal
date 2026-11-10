@@ -735,3 +735,4 @@ img[data-tint] { transition: opacity .25s; }
 .seed-kinds .mine-plant span { position: absolute; top: 2px; right: 6px; font-size: 11px; color: var(--muted); }
 .plot .plant .custom { max-height: 100%; object-fit: contain; }
 @media (max-width: 920px) { .pm-slots { grid-template-columns: repeat(3, 1fr); } .garden-head { flex-wrap: wrap; } }
+body.editing .toast { bottom: calc(210px + env(safe-area-inset-bottom)); }
