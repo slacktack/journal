@@ -1,4 +1,5 @@
 import { makeSticker } from './maker.js';
+import { flowerSVG, plantSVG, KINDS, COLORS } from './flowers.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -21,6 +22,7 @@ const THEMES = [
   { id: 'cinna', name: 'Cinnamoroll', buddy: 'cinnamoroll/image.png' },
   { id: 'custard', name: 'Custard', buddy: 'hellokitty/image-copy-10.png' },
   { id: 'night', name: 'Starry night', buddy: 'cinnamoroll/image-copy-2.png' },
+  { id: 'rose', name: 'Rose garden', buddy: 'hellokitty/image-copy-15.png' },
 ];
 const MOODS = [['happy', '😊', '#FFD84D'], ['love', '🥰', '#FF8FB8'], ['calm', '😌', '#8FD6B4'], ['sad', '😢', '#8FBAFF'], ['grumpy', '😤', '#FF9A7A'], ['sleepy', '😴', '#B9A3FF']];
 const WEATHER = [['☀️', 'sunny'], ['⛅', 'cloudy'], ['🌧️', 'rainy'], ['⛈️', 'stormy'], ['❄️', 'snowy'], ['🌈', 'rainbow']];
@@ -31,7 +33,7 @@ const INKS = [['', 'Theme ink'], ['#E8558B', 'Pink'], ['#3A7BD5', 'Blue'], ['#8B
 const BGS = [['gingham', 'Gingham'], ['dots', 'Dots'], ['stripes', 'Stripes'], ['hearts', 'Hearts'], ['grid', 'Grid'], ['plain', 'Plain']];
 const HABITS = [['water', '💧', 'Water'], ['sleep', '😴', 'Sleep'], ['skin', '🧴', 'Skincare'], ['move', '🏃‍♀️', 'Move'], ['read', '📖', 'Read'], ['veggies', '🥦', 'Veggies'], ['vitamins', '💊', 'Vitamins'], ['nospend', '💸', 'No spend']];
 const WORD_STYLES = [['1', 'bubble'], ['2', 'note'], ['3', 'speech'], ['4', 'pop'], ['5', 'dark']];
-const EMOJI = '🎀 🍓 🌸 ⭐ 💖 🍰 🧁 🌈 ☁️ 🍒 🌷 🧸 🍡 🦄 🌙 ✨ 💌 🎈 🍮 🍑 🫧 🐾 💤 🍭 🌼 🎂 📷 🎧 ☕ 🧋 🍪 💅 👑 🦋 🍀 🎵'.split(' ');
+const EMOJI = '🌹 🌷 🌺 🌻 🌼 💐 🥀 🎀 🍓 🌸 ⭐ 💖 🍰 🧁 🌈 ☁️ 🍒 🌷 🧸 🍡 🦄 🌙 ✨ 💌 🎈 🍮 🍑 🫧 🐾 💤 🍭 🌼 🎂 📷 🎧 ☕ 🧋 🍪 💅 👑 🦋 🍀 🎵'.split(' ');
 const PROMPTS = [
   'What made you smile today?', 'Three tiny things you are grateful for', 'The yummiest thing you ate',
   'Describe your outfit of the day', 'Who made your day better?', 'Something you are proud of this week',
@@ -49,7 +51,7 @@ let calMonth = new Date(), wordStyle = '1', drawerTab = local.get('diary-drawer'
 
 const charImg = path => `<img src="/stickers/${esc(path)}" alt="" loading="lazy">`;
 const buddySrc = b => (b?.startsWith('p:') ? '/stickers/' + b.slice(2) : custom[b]);
-const days = () => Object.values(entries).filter(e => e.id !== BOARD);
+const days = () => Object.values(entries).filter(e => /^\d{4}-/.test(e.id));
 const moods = () => MOODS.map(([id, e, c]) => [id, settings.moodEmoji?.[id] || e, c]);
 const habits = () => (Array.isArray(settings.habits) ? settings.habits : HABITS);
 const theme = () => THEMES.find(t => t.id === settings.theme) || THEMES[0];
@@ -237,7 +239,7 @@ function openDay(d) {
 function applyPen() {
   const p = entry.pen, st = $('#paper').style, sz = SIZES.find(s => s[0] === p.size) || SIZES[1];
   st.setProperty('--hand', `'${FONTS.includes(p.font) ? p.font : 'Gaegu'}'`);
-  st.setProperty('--fs', sz[2] + 'px'); st.setProperty('--lh', sz[3] + 'px');
+  st.setProperty('--fs', sz[2]); st.setProperty('--lh', sz[3]);
   INKS.some(i => i[0] && i[0] === p.ink) ? st.setProperty('--pen', p.ink) : st.removeProperty('--pen');
   grow();
 }
@@ -376,6 +378,7 @@ function stickerInner(code) {
   if (t === 'p') return charImg(v);
   if (t === 'c') return custom[v] ? `<img src="${esc(custom[v])}" alt="">` : '';
   if (t === 't') return esc(v.slice(2));
+  if (t === 'f') { const [k, c] = v.split(':'); return KINDS[k] ? flowerSVG(k, c) : ''; }
   return '';
 }
 
@@ -402,7 +405,7 @@ function select(i) {
 function addSticker(code, size) {
   const r = $('#paper').getBoundingClientRect(), w = r.width / 100;
   const y = Math.max(10, Math.min((innerHeight * 0.45 - r.top) / w, r.height / w - 10));
-  entry.stickers.push({ s: code, x: Math.round(35 + Math.random() * 30), y: Math.round(y), size: size || { w: 34, t: 14, p: 24, c: 22 }[code[0]] || 13, r: Math.round(Math.random() * 24 - 12) });
+  entry.stickers.push({ s: code, x: Math.round(35 + Math.random() * 30), y: Math.round(y), size: size || { w: 34, t: 14, p: 24, c: 22, f: 18 }[code[0]] || 13, r: Math.round(Math.random() * 24 - 12) });
   fresh = entry.stickers.length - 1;
   renderStickers(); select(fresh); changed();
   if (mobile()) closeSheets();
@@ -492,6 +495,7 @@ function byPack() {
 function drawerTabs() {
   return [
     ...BUILTIN.map((p, i) => ({ id: 'pack' + i, label: p.name, icon: charImg(p.files[0]) })),
+    { id: 'flowers', label: 'Flowers', icon: flowerSVG('tulip', 'pink') },
     { id: 'mine', label: 'My stickers', icon: '⭐' },
     { id: 'words', label: 'Words', icon: 'Aa' },
     { id: 'tape', label: 'Washi tape', icon: '🎞️' },
@@ -511,6 +515,8 @@ function renderDrawer() {
   if (drawerTab.startsWith('pack')) {
     const p = BUILTIN[+drawerTab.slice(4)];
     html = `<div class="sgrid big">${p.files.map(f => btn('p:' + f, charImg(f), p.name)).join('')}</div>`;
+  } else if (drawerTab === 'flowers') {
+    html = Object.entries(KINDS).map(([k, v]) => `<p class="sub">${v.name}</p><div class="sgrid big flowers">${v.colors.map(c => btn(`f:${k}:${c}`, flowerSVG(k, c), `${c} ${v.name}`)).join('')}</div>`).join('');
   } else if (drawerTab === 'mine') {
     html = Object.entries(byPack()).map(([pack, ids]) =>
       `<p class="sub">${esc(pack)}</p><div class="sgrid big">${ids.map(id => btn('c:' + id, `<img src="${esc(custom[id])}" alt="">`, pack)).join('')}</div>`).join('')
@@ -519,7 +525,7 @@ function renderDrawer() {
     html = `<form id="wordForm" class="row-form"><input id="wordIn" class="field" placeholder="omg, bestie, yay…" maxlength="40" aria-label="Sticker text"><button class="btn small">Stick</button></form>
       <div class="word-styles">${WORD_STYLES.map(([v, l]) => `<button type="button" class="txt txt${v}" data-ws="${v}" aria-pressed="${v === wordStyle}">${l}</button>`).join('')}</div>`;
   } else if (drawerTab === 'tape') {
-    html = `<div class="sgrid big">${[1, 2, 3, 4, 5].map(n => btn('w:' + n, `<span class="washi w${n}"></span>`, 'Washi tape')).join('')}</div>`;
+    html = `<div class="sgrid big">${[1, 2, 3, 4, 5, 6].map(n => btn('w:' + n, `<span class="washi w${n}"></span>`, 'Washi tape')).join('')}</div>`;
   } else if (drawerTab === 'emoji') {
     html = `<div class="sgrid">${EMOJI.map(e => btn('e:' + e, e, e)).join('')}</div>`;
   } else {
@@ -715,6 +721,81 @@ $('#mine').onclick = async e => {
   } catch (err) { toast(err.message); }
 };
 
+/* ---------- garden ---------- */
+
+let seed = { kind: 'rose', color: 'red' };
+const STAGES = ['Seed', 'Sprout', 'Leaves', 'Bud'];
+const gardenData = () => (entries.garden ??= { id: 'garden', plants: [], stickers: [] });
+const ago = d => (d ? Math.round((parse(iso(new Date())) - parse(d)) / 864e5) : 0);
+
+function saveGarden() {
+  api('entries', { method: 'PUT', body: JSON.stringify(gardenData()) }).catch(err => err.message !== 'locked' && toast('Garden didn’t save: ' + err.message));
+}
+
+function renderGarden() {
+  const g = gardenData(), t = iso(new Date());
+  const blooming = g.plants.filter(p => p.stage >= 4).length;
+  $('#gardenStats').textContent = g.plants.length
+    ? `${g.plants.length} plant${g.plants.length > 1 ? 's' : ''}, ${blooming} blooming`
+    : 'Nothing planted yet. Plant your first seed!';
+  $('#bed').innerHTML = g.plants.map((p, i) => {
+    const kind = KINDS[p.kind] ? p.kind : 'rose', stage = Math.max(0, Math.min(4, +p.stage || 0));
+    const watered = p.last === t, thirsty = !watered && ago(p.last || p.planted) >= 3;
+    const status = watered ? (stage >= 4 ? 'Blooming and happy' : 'Watered today')
+      : thirsty ? 'Very thirsty!' : stage >= 4 ? 'In full bloom' : `${STAGES[stage]}, needs water`;
+    return `<div class="plot${thirsty ? ' thirsty' : ''}" data-i="${i}">
+      <button class="pull" data-pull="${i}" aria-label="Pull out this plant">✕</button>
+      <div class="plant">${plantSVG(kind, p.color, stage)}</div><div class="pot"></div>
+      <b>${esc((p.color || '') + ' ' + KINDS[kind].name.toLowerCase())}</b><small>${status}</small>
+      <div class="row">${watered ? '<button class="btn small ghost-btn" disabled>Watered ✓</button>' : `<button class="btn small" data-water="${i}">💧 Water</button>`}
+      ${stage >= 4 ? `<button class="btn small ghost-btn" data-pick="${i}">Pick 🌸</button>` : ''}</div></div>`;
+  }).join('');
+}
+
+function renderSeeds() {
+  if (!KINDS[seed.kind].colors.includes(seed.color)) seed.color = KINDS[seed.kind].colors[0];
+  $('#seedKinds').innerHTML = Object.entries(KINDS).map(([k, v]) =>
+    `<button data-kind="${k}" aria-pressed="${seed.kind === k}">${flowerSVG(k, k === seed.kind ? seed.color : v.colors[0])}${v.name}</button>`).join('');
+  $('#seedColors').innerHTML = KINDS[seed.kind].colors.map(c => `<button data-color="${c}" aria-pressed="${seed.color === c}" style="--c:${COLORS[c]}"><i></i>${c}</button>`).join('');
+}
+
+$('#plantBtn').onclick = () => { $('#seedPicker').hidden = false; renderSeeds(); $('#seedPicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+$('#seedCancel').onclick = () => ($('#seedPicker').hidden = true);
+$('#seedPicker').onclick = e => {
+  const k = e.target.closest('[data-kind]')?.dataset.kind, c = e.target.closest('[data-color]')?.dataset.color;
+  if (k) seed.kind = k;
+  if (c) seed.color = c;
+  if (k || c) renderSeeds();
+};
+$('#seedPlant').onclick = () => {
+  const g = gardenData();
+  if (g.plants.length >= 24) return toast('Your garden is full. Pull a plant out to make room.');
+  g.plants.push({ id: Date.now().toString(36), kind: seed.kind, color: seed.color, stage: 0, last: '', planted: iso(new Date()) });
+  saveGarden(); $('#seedPicker').hidden = true; renderGarden();
+  toast('Seed planted 🌱 Water it every day!');
+};
+$('#bed').onclick = e => {
+  const q = a => e.target.closest(`[${a}]`)?.getAttribute(a);
+  const w = q('data-water'), pk = q('data-pick'), pull = q('data-pull'), g = gardenData();
+  if (w != null) {
+    const p = g.plants[w], grew = (+p.stage || 0) < 4;
+    p.last = iso(new Date());
+    if (grew) p.stage = (+p.stage || 0) + 1;
+    saveGarden(); renderGarden();
+    const plot = $(`.plot[data-i="${w}"]`);
+    plot.insertAdjacentHTML('beforeend', `<div class="drops">${Array.from({ length: 8 }, (_, k) => `<i style="left:${28 + k * 6}%;animation-delay:${k * 70}ms"></i>`).join('')}</div>`);
+    if (grew) plot.classList.add('grew');
+    toast(grew && p.stage === 4 ? `Your ${KINDS[p.kind].name.toLowerCase()} bloomed! 🌸` : 'Glug glug 💧');
+  } else if (pk != null) {
+    const p = g.plants[pk];
+    show('write', iso(new Date()));
+    addSticker(`f:${p.kind}:${p.color}`);
+    toast('Picked for today’s page 🌷');
+  } else if (pull != null && confirm('Pull out this plant? It can’t be undone.')) {
+    g.plants.splice(+pull, 1); saveGarden(); renderGarden();
+  }
+};
+
 /* ---------- shell ---------- */
 
 function show(tab, day) {
@@ -728,6 +809,7 @@ function show(tab, day) {
   if (tab === 'calendar') renderCal();
   if (tab === 'memories') renderMemories();
   if (tab === 'studio') renderMine();
+  if (tab === 'garden') { $('#seedPicker').hidden = true; renderGarden(); }
   scrollTo({ top: 0 });
 }
 $('.tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) show(b.dataset.tab); };

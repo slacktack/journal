@@ -1,6 +1,6 @@
 import { all, put, del, handle } from './_db.js';
 
-const DATE = /^(\d{4}-\d{2}-\d{2}|moodboard)$/;
+const DATE = /^(\d{4}-\d{2}-\d{2}|moodboard|garden)$/;
 
 export default (req, res) => handle(req, res, async key => {
   if (req.method === 'GET') return res.json({ entries: await all(key('entries')) });
