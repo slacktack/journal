@@ -23,15 +23,22 @@
   <form id="lockForm" class="lock-card">
     <div id="lockBuddy" class="lock-buddy"></div>
     <h1 id="lockName">my little diary</h1>
-    <p>Enter your password to open it.</p>
-    <input id="pw" type="password" placeholder="password" autocomplete="current-password" aria-label="Password" required>
-    <button class="btn wide">Open diary</button>
+    <div id="codeStep">
+      <p>Type your diary code to open your diary.</p>
+      <input id="pw" type="password" placeholder="diary code" autocomplete="current-password" aria-label="Diary code" minlength="6" required>
+      <button class="btn wide">Open diary</button>
+    </div>
+    <div id="newStep" hidden>
+      <p>No diary uses this code yet. Start a new one with it?</p>
+      <button id="createDiary" type="button" class="btn wide">Create my diary</button>
+      <button id="otherCode" type="button" class="ghost">Use a different code</button>
+    </div>
     <p id="lockMsg" class="lock-msg" role="alert"></p>
     <div class="privacy">
-      <b>🔒 Private to you</b>
-      <span>Your pages and stickers are saved on your own diary server and only open with this password. Nobody else can read them.</span>
-      <b>📱 Same diary everywhere</b>
-      <span>Type the same password on your phone and laptop and you'll see the same pages, kept in sync.</span>
+      <b>🔑 One code, one diary</b>
+      <span>Anyone who types this code opens the same diary, on any phone or laptop, kept in sync. Share it only with people you want in.</span>
+      <b>✨ New here?</b>
+      <span>Make up a code with at least 6 characters to start your own diary. Longer codes are harder to guess.</span>
     </div>
   </form>
 </div>
@@ -198,11 +205,16 @@
   <div id="habitEdit" class="habit-edit"></div>
   <button id="addHabit" class="btn small ghost-btn">+ Add a habit</button>
 
-  <h3>Privacy & sync</h3>
-  <p class="hint">Your pages are private and saved on your own diary server. Open the diary with the same password on any device and everything stays in sync.</p>
+  <h3>Your diary code</h3>
+  <p class="hint">Type this code on any device to open this same diary. Share it only with people you want in.</p>
+  <div class="code-row">
+    <input id="codeShow" class="field" type="password" readonly aria-label="Your diary code">
+    <button id="codeToggle" class="btn small ghost-btn">Show</button>
+    <button id="codeCopy" class="btn small ghost-btn">Copy</button>
+  </div>
   <div class="settings-actions">
     <button id="export" class="btn ghost-btn">Download a backup</button>
-    <button id="lockBtn" class="btn ghost-btn">Lock diary</button>
+    <button id="lockBtn" class="btn ghost-btn">Lock / switch diary</button>
   </div>
 </dialog>
 

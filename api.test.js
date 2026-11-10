@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 for (const k of ['KV_REST_API_URL', 'UPSTASH_REDIS_REST_URL', 'VERCEL']) delete process.env[k];
-process.env.JOURNAL_PASSWORD = 'kitty♡';
 process.chdir(mkdtempSync(join(tmpdir(), 'diary-')));
 const entries = (await import(new URL('./api/entries.js', import.meta.url))).default;
 const settings = (await import(new URL('./api/settings.js', import.meta.url))).default;
@@ -16,8 +15,15 @@ const call = (h, { method = 'GET', key = 'kitty♡', body, query = {} } = {}) =>
   h({ method, body, query, headers: { 'x-journal-key': encodeURIComponent(key) } }, res);
 });
 
-test('wrong password is rejected', async () => {
-  assert.equal((await call(entries, { key: 'nope' })).code, 401);
+test('short codes are rejected', async () => {
+  assert.equal((await call(entries, { key: 'abc' })).code, 401);
+});
+
+test('each code is its own diary, same code shares it', async () => {
+  const e = { id: '2026-01-01', title: 'mine', stickers: [] };
+  await call(entries, { method: 'PUT', body: e, key: 'bestie-code' });
+  assert.deepEqual((await call(entries, { key: 'bestie-code' })).body.entries, [e]);
+  assert.deepEqual((await call(entries, { key: 'someone-else' })).body.entries, []);
 });
 
 test('entries round-trip and delete', async () => {

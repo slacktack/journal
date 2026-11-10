@@ -1,9 +1,10 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const URL_ = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 const FILE = '.data/db.json';
+export const MIN_CODE = 6;
 
 async function redis(...cmd) {
   const r = await fetch(URL_, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(cmd) });
@@ -14,7 +15,7 @@ async function redis(...cmd) {
 
 // shortcut: JSON file store for local dev only; Vercel's disk is read-only, so prod needs Redis.
 async function load() {
-  if (process.env.VERCEL) throw new Error('No database connected: add Upstash Redis in Vercel → Storage');
+  if (process.env.VERCEL) throw new Error('No database connected: in Vercel open Storage, add Upstash Redis, connect it to this project, then redeploy');
   try { return JSON.parse(await readFile(FILE, 'utf8')); } catch { return {}; }
 }
 async function save(db) {
@@ -44,15 +45,12 @@ export async function del(hash, id) {
   await save(db);
 }
 
-const sha = s => createHash('sha256').update(s).digest();
-
+// The diary code picks the diary: same code on any device = same diary. Only its hash is stored.
+// shortcut: no rate limit on code guesses; add one (e.g. Upstash ratelimit) if the site gets public traffic.
 export async function handle(req, res, fn) {
-  const pw = process.env.JOURNAL_PASSWORD;
-  if (!pw && process.env.VERCEL) return res.status(503).json({ error: 'Set JOURNAL_PASSWORD in Vercel env vars' });
-  if (pw) {
-    let given = '';
-    try { given = decodeURIComponent(req.headers['x-journal-key'] || ''); } catch {}
-    if (!timingSafeEqual(sha(pw), sha(given))) return res.status(401).json({ error: 'wrong password' });
-  }
-  try { await fn(); } catch (e) { res.status(500).json({ error: e.message }); }
+  let code = '';
+  try { code = decodeURIComponent(req.headers['x-journal-key'] || '').trim(); } catch {}
+  if (code.length < MIN_CODE) return res.status(401).json({ error: `Diary codes are at least ${MIN_CODE} characters.` });
+  const ns = 'd:' + createHash('sha256').update('little-diary:' + code).digest('hex').slice(0, 40);
+  try { await fn(name => `${ns}:${name}`); } catch (e) { res.status(500).json({ error: e.message }); }
 }

@@ -57,7 +57,7 @@ const theme = () => THEMES.find(t => t.id === settings.theme) || THEMES[0];
 async function api(path, opts = {}) {
   const r = await fetch('/api/' + path, { ...opts, headers: { 'content-type': 'application/json', 'x-journal-key': encodeURIComponent(key) } });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401) { showLock(key ? 'That password didn’t match. Try again.' : ''); throw new Error('locked'); }
+  if (r.status === 401) { showLock(key ? j.error : ''); throw new Error('locked'); }
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
@@ -129,7 +129,7 @@ function renderDesign() {
     `<div><input class="field emo" data-habit-emo="${i}" value="${esc(e)}" maxlength="8" aria-label="Habit icon"><input class="field" data-habit-label="${i}" value="${esc(l)}" maxlength="16" aria-label="Habit name"><button data-habit-del="${i}" aria-label="Remove habit">✕</button></div>`).join('');
 }
 
-$('#settingsBtn').onclick = () => { renderDesign(); $('#settings').showModal(); };
+$('#settingsBtn').onclick = () => { renderDesign(); $('#codeShow').value = key; $('#settings').showModal(); };
 $('#diaryName').oninput = e => saveSettings({ name: e.target.value.trim() });
 $('#settings').addEventListener('click', e => {
   const t = e.target.closest('[data-pick-theme]')?.dataset.pickTheme;
@@ -181,15 +181,18 @@ async function photoData(file, max, q) {
 
 /* ---------- lock & boot ---------- */
 
-function showLock(msg = '') {
+function showLock(msg = '', step = 'code') {
   $('#app').hidden = true; $('#lock').hidden = false;
-  $('#lockMsg').textContent = msg; $('#pw').value = ''; $('#pw').focus();
+  $('#codeStep').hidden = step !== 'code'; $('#newStep').hidden = step !== 'new';
+  $('#lockMsg').textContent = msg;
+  if (step === 'code') { $('#pw').value = ''; $('#pw').focus(); }
 }
 
 async function boot() {
   try {
     const [e, s, st, b] = await Promise.all([api('entries'), api('stickers'), api('settings'), fetch('/stickers/packs.json').then(r => r.json()).catch(() => [])]);
     BUILTIN = b;
+    if (!e.entries.length && !s.stickers.length && !st.created) return showLock('', 'new');
     entries = Object.fromEntries(e.entries.map(x => [x.id, x]));
     custom = Object.fromEntries(s.stickers.map(x => [x.id, x.src]));
     packs = Object.fromEntries(s.stickers.map(x => [x.id, x.pack || 'My stickers']));
@@ -198,7 +201,7 @@ async function boot() {
     $('#lock').hidden = true; $('#app').hidden = false;
     renderStreak(); openDay(iso(new Date()));
   } catch (err) {
-    if (err.message !== 'locked') { showLock(); toast(err.message); }
+    if (err.message !== 'locked') { showLock(err.message); }
   }
 }
 
@@ -741,7 +744,17 @@ $('#export').onclick = () => {
   a.click();
 };
 $('#lockBtn').onclick = () => { flush(); $('#settings').close(); key = ''; local.set('diary-key', ''); showLock(); };
-$('#lockForm').onsubmit = e => { e.preventDefault(); key = $('#pw').value; local.set('diary-key', key); boot(); };
+$('#lockForm').onsubmit = e => { e.preventDefault(); key = $('#pw').value.trim(); local.set('diary-key', key); boot(); };
+$('#createDiary').onclick = async () => {
+  try {
+    await api('settings', { method: 'PUT', body: JSON.stringify({ ...settings, created: Date.now() }) });
+    toast('Your new diary is ready 🎀');
+    boot();
+  } catch (err) { if (err.message !== 'locked') $('#lockMsg').textContent = err.message; }
+};
+$('#otherCode').onclick = () => { key = ''; local.set('diary-key', ''); showLock(); };
+$('#codeToggle').onclick = () => { const i = $('#codeShow'); i.type = i.type === 'password' ? 'text' : 'password'; $('#codeToggle').textContent = i.type === 'text' ? 'Hide' : 'Show'; };
+$('#codeCopy').onclick = async () => { try { await navigator.clipboard.writeText(key); toast('Code copied'); } catch { toast('Copy didn’t work. Tap Show and copy it by hand.'); } };
 
 applyLook();
 boot();

@@ -477,3 +477,7 @@ body[data-bg=photo] { background-size: cover; background-position: center; }
   .tabs button { padding: 6px 4px; font-size: 10px; }
 }
 .write:has(.page.board) .bits, .write:has(.page.board) [data-open=bits] { display: none; }
+
+.code-row { display: flex; gap: 8px; margin-top: 8px; }
+#newStep p, #codeStep p { color: var(--muted); margin: 4px 0 16px; }
+#otherCode { margin-top: 8px; }
