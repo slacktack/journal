@@ -1,0 +1,29 @@
+{
+  "name": "Cinnamoroll",
+  "tagline": "Fluffy cloud puppy",
+  "accent": "#8EC9F7",
+  "order": 1,
+  "moods": {
+    "idle": [
+      "image.png",
+      "image-copy-17.png",
+      "image-copy.png"
+    ],
+    "excited": "image.png",
+    "happy": "image-copy-4.png",
+    "sleepy": "image-copy-4.png",
+    "sleeping": "image-copy-4.png",
+    "love": "image-copy-18.png",
+    "wink": "image-copy-2.png",
+    "surprised": "image-copy.png",
+    "pout": "image-copy-16.png",
+    "wake": "image-copy.png",
+    "focused": "image-copy-3.png",
+    "zoom": "image-copy-3.png",
+    "whee": "image.png",
+    "dizzy": "image-copy-17.png"
+  },
+  "facing": {
+    "image-copy-3.png": "left"
+  }
+}

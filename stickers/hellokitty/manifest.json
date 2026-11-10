@@ -1,0 +1,28 @@
+{
+  "name": "Hello Kitty",
+  "tagline": "Bow-tiful best friend",
+  "accent": "#FF7DA8",
+  "order": 2,
+  "moods": {
+    "idle": [
+      "image-copy-12.png",
+      "image-copy-14.png",
+      "image-copy-11.png",
+      "image-copy-5.png"
+    ],
+    "happy": "image-copy-10.png",
+    "excited": "image-copy-9.png",
+    "whee": "image-copy-9.png",
+    "love": "image-copy-6.png",
+    "wink": "image-copy-6.png",
+    "focused": "image-copy-8.png",
+    "zoom": "image-copy-8.png",
+    "sleepy": "image-copy-8.png",
+    "sleeping": "image-copy-8.png",
+    "surprised": "image-copy-13.png",
+    "pout": "image-copy-15.png",
+    "wake": "image-copy-7.png",
+    "dizzy": "image-copy-13.png"
+  },
+  "facing": {}
+}

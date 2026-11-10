@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" data-theme="kitty">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>My Little Diary</title>
+<meta name="theme-color" content="#FFF4F7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Diary">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&family=Zen+Maru+Gothic:wght@500;700;900&family=Gaegu:wght@400;700&family=Caveat:wght@500;700&family=Patrick+Hand&family=Yomogi&family=Indie+Flower&family=Kalam:wght@400;700&family=Mali:wght@400;600&family=Sniglet&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="lock" class="lock" hidden>
+  <form id="lockForm" class="lock-card">
+    <div id="lockBuddy" class="lock-buddy"></div>
+    <h1 id="lockName">my little diary</h1>
+    <p>Enter your password to open it.</p>
+    <input id="pw" type="password" placeholder="password" autocomplete="current-password" aria-label="Password" required>
+    <button class="btn wide">Open diary</button>
+    <p id="lockMsg" class="lock-msg" role="alert"></p>
+    <div class="privacy">
+      <b>🔒 Private to you</b>
+      <span>Your pages and stickers are saved on your own diary server and only open with this password. Nobody else can read them.</span>
+      <b>📱 Same diary everywhere</b>
+      <span>Type the same password on your phone and laptop and you'll see the same pages, kept in sync.</span>
+    </div>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="top">
+    <button id="buddy" class="buddy" aria-label="Say hi to your buddy"></button>
+    <div id="bubble" class="bubble" hidden></div>
+    <span id="brand" class="brand">my little diary</span>
+    <nav class="tabs" aria-label="Sections">
+      <button data-tab="write" aria-current="page"><i>✍️</i><span>Diary</span></button>
+      <button data-tab="moodboard"><i>🖼️</i><span>Moodboard</span></button>
+      <button data-tab="calendar"><i>📅</i><span>Calendar</span></button>
+      <button data-tab="memories"><i>💭</i><span>Memories</span></button>
+      <button data-tab="studio"><i>✂️</i><span>Stickers</span></button>
+    </nav>
+    <span id="streak" class="streak" title="Days in a row"></span>
+    <button id="settingsBtn" class="design-btn" aria-label="Design your diary">🎨<span>Design</span></button>
+  </header>
+
+  <main>
+    <section id="tab-write" class="write">
+      <article id="paper" class="page">
+        <div class="page-head">
+          <div class="stamp">
+            <button id="prev" class="step" aria-label="Previous day">‹</button>
+            <button id="dayNum" class="daynum" aria-label="Pick a date"></button>
+            <input id="date" type="date" class="sr-only" tabindex="-1" aria-hidden="true">
+            <div class="stamp-text"><b id="weekday"></b><span id="monthYear"></span></div>
+            <button id="next" class="step" aria-label="Next day">›</button>
+          </div>
+          <div class="feel">
+            <div id="moods" class="faces" aria-label="Mood"></div>
+            <div id="weathers" class="faces" aria-label="Weather"></div>
+          </div>
+        </div>
+        <div class="board-bar">
+          <button id="boardPhoto" class="btn small">📷 Add photos</button>
+          <span class="hint">Pin photos, stickers, words and tape anywhere. Pinch or use the toolbar to resize.</span>
+          <input id="boardUpload" type="file" accept="image/*" multiple hidden>
+        </div>
+        <input id="title" class="title" placeholder="Dear diary…" aria-label="Title" maxlength="120">
+        <button id="prompt" class="prompt" title="Add this question to your page"></button>
+        <textarea id="body" placeholder="What happened today?" aria-label="Diary entry"></textarea>
+        <div id="layer" class="layer"></div>
+        <footer class="page-foot">
+          <span id="saved" class="saved" aria-live="polite"></span>
+          <button id="today" class="ghost">Back to today</button>
+          <button id="delete" class="ghost">Tear out page</button>
+        </footer>
+      </article>
+
+      <aside class="side">
+        <div id="drawer" class="drawer sheet" aria-label="Stickers and style">
+          <div class="grab mobile-only" aria-hidden="true"></div>
+          <div class="drawer-head">
+            <b id="drawerTitle"></b>
+            <span class="hint">Tap to stick, drag to move</span>
+            <button class="round mobile-only" data-close aria-label="Close">✕</button>
+          </div>
+          <div id="drawerTabs" class="seg" role="tablist"></div>
+          <div id="drawerBody" class="drawer-body"></div>
+        </div>
+
+        <div id="bits" class="bits sheet">
+          <div class="grab mobile-only" aria-hidden="true"></div>
+          <div class="sheet-head mobile-only"><b>Today</b><button class="round" data-close aria-label="Close">✕</button></div>
+          <h3>Habits</h3>
+          <div id="habits" class="habits"></div>
+          <h3>To-do</h3>
+          <form id="todoForm" class="row-form"><input id="todoIn" class="field" placeholder="Add a task" maxlength="120" aria-label="New task"><button class="btn small">Add</button></form>
+          <ul id="todos" class="todos"></ul>
+          <h3>Song of the day</h3>
+          <input id="song" class="field" placeholder="🎧 What's on repeat?" maxlength="100" aria-label="Song of the day">
+        </div>
+      </aside>
+
+      <div id="scrim" class="scrim" hidden></div>
+      <nav id="pagebar" class="pagebar mobile-only" aria-label="Page tools">
+        <button data-open="stickers"><img id="pagebarBuddy" alt=""><span>Stickers</span></button>
+        <button data-open="style"><i>✏️</i><span>Style</span></button>
+        <button data-open="bits"><i>✅</i><span>Today</span></button>
+      </nav>
+    </section>
+
+    <section id="tab-calendar" hidden>
+      <div class="panel cal-panel">
+        <div class="cal-head">
+          <button id="calPrev" class="step" aria-label="Previous month">‹</button>
+          <h2 id="calTitle"></h2>
+          <button id="calNext" class="step" aria-label="Next month">›</button>
+        </div>
+        <div id="cal" class="cal"></div>
+      </div>
+    </section>
+
+    <section id="tab-memories" hidden>
+      <div id="stats" class="stats"></div>
+      <div id="onthisday"></div>
+      <input id="search" class="field search" type="search" placeholder="Search your pages" aria-label="Search">
+      <div id="list" class="memos"></div>
+    </section>
+
+    <section id="tab-studio" hidden>
+      <label id="drop" class="drop">
+        <input id="upload" type="file" accept="image/*" multiple hidden>
+        <img src="/stickers/cinnamoroll/image-copy-4.png" alt="" class="drop-peek">
+        <b>Drop any pictures here</b>
+        <span>Or tap to choose, or paste one. Characters, selfies, pets, food… the background gets cut out for you.</span>
+      </label>
+      <div class="studio-opts">
+        <label>Add to pack <input id="packIn" class="field" list="packList" placeholder="My stickers" maxlength="40"></label>
+        <datalist id="packList"></datalist>
+        <label class="check"><input id="keepBg" type="checkbox"> Keep the background</label>
+      </div>
+      <div id="making" class="making"></div>
+      <p class="hint center">Tap ⭐ on any sticker to make it your buddy in the corner.</p>
+      <div id="mine"></div>
+    </section>
+  </main>
+
+  <div id="tools" class="tools" hidden>
+    <button data-t="smaller" aria-label="Smaller">−</button>
+    <button data-t="bigger" aria-label="Bigger">+</button>
+    <button data-t="left" aria-label="Rotate left">↺</button>
+    <button data-t="right" aria-label="Rotate right">↻</button>
+    <button data-t="front" aria-label="Bring to front">⤒</button>
+    <button data-t="remove" aria-label="Remove sticker">🗑</button>
+    <button data-t="done" class="done">Done</button>
+    <span class="tools-hint">Pinch to resize & rotate</span>
+  </div>
+</div>
+
+<dialog id="settings" class="settings">
+  <form method="dialog" class="settings-head"><h2>Design your diary</h2><button class="round" aria-label="Close">✕</button></form>
+  <p class="hint">Everything here is yours to change, and it syncs to every device you open the diary on.</p>
+
+  <h3>Name</h3>
+  <input id="diaryName" class="field" maxlength="30" placeholder="my little diary" aria-label="Diary name">
+
+  <h3>Theme</h3>
+  <div id="themeList" class="theme-list"></div>
+
+  <h3>Your colors</h3>
+  <div class="colors">
+    <label><input type="color" id="c-accent"><span>Accent</span></label>
+    <label><input type="color" id="c-desk"><span>Background</span></label>
+    <label><input type="color" id="c-paper"><span>Paper</span></label>
+    <label><input type="color" id="c-ink"><span>Ink</span></label>
+  </div>
+  <button id="resetColors" class="ghost">Use the theme's colors</button>
+
+  <h3>Background</h3>
+  <div id="bgList" class="bg-list"></div>
+  <input id="bgUpload" type="file" accept="image/*" hidden>
+
+  <h3>Buddy</h3>
+  <div id="buddyList" class="buddy-list"></div>
+
+  <h3>Mood faces</h3>
+  <div id="moodEdit" class="mood-edit"></div>
+
+  <h3>Habits</h3>
+  <div id="habitEdit" class="habit-edit"></div>
+  <button id="addHabit" class="btn small ghost-btn">+ Add a habit</button>
+
+  <h3>Privacy & sync</h3>
+  <p class="hint">Your pages are private and saved on your own diary server. Open the diary with the same password on any device and everything stays in sync.</p>
+  <div class="settings-actions">
+    <button id="export" class="btn ghost-btn">Download a backup</button>
+    <button id="lockBtn" class="btn ghost-btn">Lock diary</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
