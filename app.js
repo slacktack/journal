@@ -1,5 +1,6 @@
 import { makeSticker } from './maker.js';
-import { flowerSVG, plantSVG, KINDS, COLORS } from './flowers.js';
+import { PHOTOS, photo, photoImg, plantImg, GROWABLE } from './flowers.js';
+import { startMusic, stopMusic } from './music.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -126,6 +127,7 @@ function renderDesign() {
   const buddies = [...THEMES.map(t => ['', `/stickers/${t.buddy}`]).slice(0, 1), ...BUILTIN.flatMap(p => p.files.map(f => ['p:' + f, '/stickers/' + f])),
     ...Object.keys(custom).filter(id => !packs[id]?.startsWith('_')).map(id => [id, custom[id]])];
   $('#buddyList').innerHTML = buddies.map(([v, src]) => `<button data-buddy-pick="${esc(v)}" aria-pressed="${(settings.buddy || '') === v}" title="${v ? '' : 'Theme buddy'}"><img src="${esc(src)}" alt="" loading="lazy"></button>`).join('');
+  $('#creditList').innerHTML = PHOTOS.map(p => `<li><a href="${esc(p.page)}" target="_blank" rel="noopener">${esc(p.credit)}</a></li>`).join('');
   $('#moodEdit').innerHTML = moods().map(([id, e]) => `<input class="field" data-mood-edit="${id}" value="${esc(e)}" maxlength="8" aria-label="Face for ${id}" title="${id}">`).join('');
   $('#habitEdit').innerHTML = habits().map(([id, e, l], i) =>
     `<div><input class="field emo" data-habit-emo="${i}" value="${esc(e)}" maxlength="8" aria-label="Habit icon"><input class="field" data-habit-label="${i}" value="${esc(l)}" maxlength="16" aria-label="Habit name"><button data-habit-del="${i}" aria-label="Remove habit">✕</button></div>`).join('');
@@ -209,10 +211,13 @@ async function boot() {
 
 /* ---------- the page ---------- */
 
-const blank = id => ({ id, title: '', body: '', mood: '', weather: '', paper: 'lined', stickers: [], habits: [], todos: [], song: '', pen: { font: 'Gaegu', size: 'm', ink: '', ...settings.pen } });
+const blank = id => ({ id, title: '', body: '', mood: '', weather: '', paper: 'lined', stickers: [], habits: [], todos: [], song: '', voice: [], ink: [], tint: '', pen: { font: 'Gaegu', size: 'm', ink: '', ...settings.pen } });
 
 function openDay(d) {
   flush();
+  if (rec) rec.mr.stop();
+  if (drawing) toggleDraw(false);
+  audio.pause(); playing = null;
   const board = d === BOARD;
   if (!board) lastDay = d;
   entry = { ...blank(d), ...structuredClone(entries[d] || {}) };
@@ -230,10 +235,10 @@ function openDay(d) {
     $('#prompt').textContent = '✨ ' + PROMPTS[Math.abs(hash) % PROMPTS.length];
   }
   $('#title').value = entry.title;
-  $('#body').value = entry.body;
+  $('#body').innerHTML = cleanHTML(entry.html ?? (entry.body ? entry.body.split('\n').map(l => `<div>${esc(l) || '<br>'}</div>`).join('') : ''));
   $('#song').value = entry.song;
   $('#saved').textContent = entries[d] ? 'Saved' : '';
-  applyPen(); renderFeel(); renderBits(); renderStickers(); renderDrawer(); grow();
+  applyPen(); renderFeel(); renderBits(); renderStickers(); renderDrawer(); renderVoices(); renderPageTools();
 }
 
 function applyPen() {
@@ -241,12 +246,12 @@ function applyPen() {
   st.setProperty('--hand', `'${FONTS.includes(p.font) ? p.font : 'Gaegu'}'`);
   st.setProperty('--fs', sz[2]); st.setProperty('--lh', sz[3]);
   INKS.some(i => i[0] && i[0] === p.ink) ? st.setProperty('--pen', p.ink) : st.removeProperty('--pen');
-  grow();
+  TINTS.some(t => t[0] && t[0] === entry.tint) ? st.setProperty('--paper', entry.tint) : st.removeProperty('--paper');
 }
 
 function setPen(patch) {
   entry.pen = { ...entry.pen, ...patch };
-  applyPen(); renderDrawer(); changed();
+  applyPen(); renderDrawer(); renderPageTools(); changed();
   saveSettings({ pen: entry.pen });
 }
 
@@ -254,7 +259,7 @@ function renderFeel() {
   if (!entry) return;
   $('#moods').innerHTML = moods().map(([v, e]) => `<button data-mood="${v}" aria-pressed="${entry.mood === v}" title="${v}" aria-label="Mood: ${v}">${esc(e)}</button>`).join('');
   $('#weathers').innerHTML = WEATHER.map(([e, l]) => `<button data-weather="${e}" aria-pressed="${entry.weather === e}" title="${l}" aria-label="Weather: ${l}">${e}</button>`).join('');
-  $('#body').className = 'p-' + entry.paper;
+  $('#body').className = 'body p-' + entry.paper;
 }
 $('.feel').onclick = e => {
   const b = e.target.closest('button');
@@ -292,11 +297,6 @@ $('#todos').onclick = e => {
   renderBits(); changed();
 };
 
-function grow() {
-  const b = $('#body');
-  b.style.height = 'auto';
-  b.style.height = b.scrollHeight + 'px';
-}
 
 function changed() {
   clearTimeout(timer);
@@ -311,7 +311,7 @@ function flush() {
 async function save() {
   timer = null;
   const e = entry;
-  if (!e.title && !e.body && !e.mood && !e.weather && !e.song && !e.stickers.length && !e.habits.length && !e.todos.length && !entries[e.id]) return;
+  if (!e.title && !e.body && !e.mood && !e.weather && !e.song && !e.stickers.length && !e.habits.length && !e.todos.length && !e.voice?.length && !e.ink?.length && !entries[e.id]) return;
   e.updatedAt = Date.now();
   entries[e.id] = structuredClone(e);
   if (e === entry) $('#saved').textContent = 'Saving…';
@@ -327,12 +327,16 @@ async function save() {
 }
 
 $('#title').oninput = e => { entry.title = e.target.value; changed(); };
-$('#body').oninput = e => { entry.body = e.target.value; grow(); changed(); };
+$('#body').oninput = () => { entry.html = cleanHTML($('#body').innerHTML); entry.body = $('#body').innerText.replace(/\n{3,}/g, '\n\n').trim(); changed(); };
+$('#body').addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); });
 $('#song').oninput = e => { entry.song = e.target.value; changed(); };
 $('#prompt').onclick = () => {
-  const b = $('#body'), p = $('#prompt').textContent.slice(2);
-  b.value += (b.value ? '\n\n' : '') + p + '\n';
-  b.dispatchEvent(new Event('input')); b.focus();
+  const b = $('#body');
+  b.insertAdjacentHTML('beforeend', `<div><b>${esc($('#prompt').textContent.slice(2))}</b></div><div><br></div>`);
+  b.focus();
+  const r = document.createRange(); r.selectNodeContents(b.lastChild); r.collapse(true);
+  getSelection().removeAllRanges(); getSelection().addRange(r);
+  b.dispatchEvent(new Event('input'));
 };
 $('#dayNum').onclick = () => { try { $('#date').showPicker(); } catch { $('#date').click(); } };
 $('#date').onchange = e => e.target.value && openDay(e.target.value);
@@ -340,7 +344,7 @@ $('#prev').onclick = () => openDay(shift(entry.id, -1));
 $('#next').onclick = () => openDay(shift(entry.id, 1));
 $('#today').onclick = () => openDay(iso(new Date()));
 $('#delete').onclick = async () => {
-  if (!entries[entry.id] || !confirm('Tear out this page? This can’t be undone.')) return;
+  if (!entries[entry.id] || !(await ask('Tear out this page?', 'This page and everything on it will be gone for good.', 'Tear it out'))) return;
   clearTimeout(timer); timer = null;
   try {
     await api('entries?id=' + entry.id, { method: 'DELETE' });
@@ -351,6 +355,80 @@ $('#delete').onclick = async () => {
 document.addEventListener('visibilitychange', () => document.hidden && flush());
 document.addEventListener('focusin', e => { if (mobile() && e.target.matches('#title, #body, .bits .field')) document.body.classList.add('typing'); });
 document.addEventListener('focusout', () => document.body.classList.remove('typing'));
+
+/* ---------- voice notes ---------- */
+
+let rec = null, playing = null;
+const audio = new Audio(), voiceCache = new Map();
+const clock = s => `${Math.floor(s / 60)}:${pad(Math.round(s) % 60)}`;
+
+function renderVoices() {
+  const list = entry.voice || [];
+  $('#voices').innerHTML = list.map(v => `<div class="voice${playing === v.id ? ' playing' : ''}">
+    <button class="vplay" data-play="${esc(v.id)}" aria-label="${playing === v.id ? 'Pause' : 'Play'} voice note">${playing === v.id ? '❚❚' : '▶'}</button>
+    <span class="wave">${'<i></i>'.repeat(16)}</span><small>${clock(v.dur || 0)}</small>
+    <button class="vdel" data-vdel="${esc(v.id)}" aria-label="Delete voice note">✕</button></div>`).join('');
+  // Fetch ahead so a tap can play right away (iOS only allows play() inside the tap).
+  for (const v of list) if (!voiceCache.has(v.id)) {
+    voiceCache.set(v.id, api('voice?id=' + encodeURIComponent(v.id)).then(r => (voiceCache.set(v.id, r.src), r.src)).catch(() => (voiceCache.delete(v.id), null)));
+  }
+}
+
+function setRecUI(on, t = 0) {
+  $('#recBtn').classList.toggle('recording', on);
+  $('#recBtn span').textContent = on ? `Stop  ${clock(t)} / 2:00` : 'Voice note';
+}
+
+$('#recBtn').onclick = async () => {
+  if (rec) return rec.mr.stop();
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Recording needs the https site and a browser that can record audio.');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { return toast('Microphone access is blocked. Allow it in your browser settings, then try again.'); }
+  const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t));
+  const mr = new MediaRecorder(stream, { ...(mime && { mimeType: mime }), audioBitsPerSecond: 24000 });
+  const chunks = [], start = Date.now(), page = entry;
+  mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+  mr.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    clearInterval(rec.tick); clearTimeout(rec.cap); rec = null; setRecUI(false);
+    const dur = (Date.now() - start) / 1000;
+    if (dur < 1) return toast('That was too short to save.');
+    const blob = new Blob(chunks, { type: mr.mimeType || chunks[0]?.type || 'audio/webm' });
+    const src = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
+    try {
+      const { id } = await api('voice', { method: 'POST', body: JSON.stringify({ src }) });
+      voiceCache.set(id, src);
+      (page.voice ??= []).push({ id, dur: Math.round(dur) });
+      if (page === entry) { renderVoices(); changed(); }
+      else { entries[page.id] = structuredClone(page); api('entries', { method: 'PUT', body: JSON.stringify(page) }); }
+      toast('Voice note saved 🎙');
+    } catch (err) { if (err.message !== 'locked') toast('Couldn’t save the voice note: ' + err.message); }
+  };
+  mr.start(1000);
+  rec = { mr, tick: setInterval(() => setRecUI(true, (Date.now() - start) / 1000), 250), cap: setTimeout(() => mr.state === 'recording' && mr.stop(), 120000) };
+  setRecUI(true);
+};
+
+$('#voices').onclick = async e => {
+  const p = e.target.closest('[data-play]')?.dataset.play, d = e.target.closest('[data-vdel]')?.dataset.vdel;
+  if (p) {
+    if (playing === p) { audio.pause(); playing = null; return renderVoices(); }
+    let src = voiceCache.get(p);
+    if (src instanceof Promise) src = await src;
+    if (!src) return toast('Couldn’t load that voice note.');
+    audio.src = src;
+    audio.play().then(() => { playing = p; renderVoices(); })
+      .catch(() => toast('This browser can’t play that recording format. Try it on the device that recorded it.'));
+  } else if (d && (await ask('Delete this voice note?', 'You won’t be able to get it back.', 'Delete'))) {
+    try { await api('voice?id=' + encodeURIComponent(d), { method: 'DELETE' }); }
+    catch (err) { if (err.message === 'locked') return; }
+    if (playing === d) { audio.pause(); playing = null; }
+    entry.voice = entry.voice.filter(v => v.id !== d);
+    renderVoices(); changed();
+  }
+};
+audio.onended = () => { playing = null; renderVoices(); };
 
 /* ---------- moodboard photos ---------- */
 
@@ -378,18 +456,18 @@ function stickerInner(code) {
   if (t === 'p') return charImg(v);
   if (t === 'c') return custom[v] ? `<img src="${esc(custom[v])}" alt="">` : '';
   if (t === 't') return esc(v.slice(2));
-  if (t === 'f') { const [k, c] = v.split(':'); return KINDS[k] ? flowerSVG(k, c) : ''; }
+  if (t === 'r') return photoImg(v);
   return '';
 }
 
 function renderStickers() {
-  $('#layer').innerHTML = entry.stickers.map((s, i) => {
+  $('#layer').innerHTML = inkSVG() + entry.stickers.map((s, i) => {
     const kind = s.s[0] === 'w' ? ` washi w${+s.s.slice(2)}` : s.s[0] === 't' ? ` txt txt${+s.s[2]}` : '';
     return `<div class="stk${kind}${i === sel ? ' sel' : ''}${i === fresh ? ' new' : ''}" data-i="${i}" style="--x:${+s.x};--y:${+s.y};--s:${+s.size};--r:${+s.r}deg">${stickerInner(s.s)}</div>`;
   }).join('');
   fresh = -1;
   if (entry.id === BOARD) {
-    const lowest = Math.max(0, ...entry.stickers.map(s => +s.y + +s.size / 2));
+    const lowest = Math.max(0, ...entry.stickers.map(s => +s.y + +s.size / 2), ...(entry.ink || []).flatMap(s => s.p.filter((_, i) => i % 2)));
     $('#paper').style.minHeight = `${Math.round((lowest * $('#layer').clientWidth) / 100) + 320}px`;
   } else $('#paper').style.minHeight = '';
 }
@@ -405,7 +483,7 @@ function select(i) {
 function addSticker(code, size) {
   const r = $('#paper').getBoundingClientRect(), w = r.width / 100;
   const y = Math.max(10, Math.min((innerHeight * 0.45 - r.top) / w, r.height / w - 10));
-  entry.stickers.push({ s: code, x: Math.round(35 + Math.random() * 30), y: Math.round(y), size: size || { w: 34, t: 14, p: 24, c: 22, f: 18 }[code[0]] || 13, r: Math.round(Math.random() * 24 - 12) });
+  entry.stickers.push({ s: code, x: Math.round(35 + Math.random() * 30), y: Math.round(y), size: size || { w: 34, t: 14, p: 24, c: 22, r: 22 }[code[0]] || 13, r: Math.round(Math.random() * 24 - 12) });
   fresh = entry.stickers.length - 1;
   renderStickers(); select(fresh); changed();
   if (mobile()) closeSheets();
@@ -426,7 +504,7 @@ $('#layer').addEventListener('pointerdown', e => {
   if (!el && pts.size === 0) { select(null); return; }
   e.preventDefault();
   if (el && pts.size === 0) select(+el.dataset.i);
-  $('#layer').setPointerCapture(e.pointerId);
+  try { $('#layer').setPointerCapture(e.pointerId); } catch {}
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   startGesture();
 });
@@ -495,7 +573,7 @@ function byPack() {
 function drawerTabs() {
   return [
     ...BUILTIN.map((p, i) => ({ id: 'pack' + i, label: p.name, icon: charImg(p.files[0]) })),
-    { id: 'flowers', label: 'Flowers', icon: flowerSVG('tulip', 'pink') },
+    { id: 'flowers', label: 'Real flowers & plants', icon: photoImg('rose-pink') },
     { id: 'mine', label: 'My stickers', icon: '⭐' },
     { id: 'words', label: 'Words', icon: 'Aa' },
     { id: 'tape', label: 'Washi tape', icon: '🎞️' },
@@ -516,7 +594,9 @@ function renderDrawer() {
     const p = BUILTIN[+drawerTab.slice(4)];
     html = `<div class="sgrid big">${p.files.map(f => btn('p:' + f, charImg(f), p.name)).join('')}</div>`;
   } else if (drawerTab === 'flowers') {
-    html = Object.entries(KINDS).map(([k, v]) => `<p class="sub">${v.name}</p><div class="sgrid big flowers">${v.colors.map(c => btn(`f:${k}:${c}`, flowerSVG(k, c), `${c} ${v.name}`)).join('')}</div>`).join('');
+    const groups = {};
+    for (const p of PHOTOS) (groups[p.group] ??= []).push(p);
+    html = Object.entries(groups).map(([g, list]) => `<p class="sub">${g}</p><div class="sgrid big flowers">${list.map(p => btn('r:' + p.id, photoImg(p.id), p.name)).join('')}</div>`).join('');
   } else if (drawerTab === 'mine') {
     html = Object.entries(byPack()).map(([pack, ids]) =>
       `<p class="sub">${esc(pack)}</p><div class="sgrid big">${ids.map(id => btn('c:' + id, `<img src="${esc(custom[id])}" alt="">`, pack)).join('')}</div>`).join('')
@@ -549,7 +629,7 @@ $('#drawer').addEventListener('click', e => {
   if (t) { drawerTab = t; local.set('diary-drawer', t); renderDrawer(); }
   else if (s) addSticker(s);
   else if (ws) { wordStyle = ws; $$('[data-ws]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ws === ws)); }
-  else if (paper) { entry.paper = paper; renderFeel(); renderDrawer(); changed(); }
+  else if (paper) { entry.paper = paper; renderFeel(); renderDrawer(); renderPageTools(); changed(); }
   else if (font) setPen({ font });
   else if (size) setPen({ size });
   else if (ink != null) setPen({ ink });
@@ -565,6 +645,7 @@ $('#drawer').addEventListener('submit', e => {
 
 function openSheet(name) {
   closeSheets();
+  if (name === 'draw') return toggleDraw(true);
   if (name === 'bits') $('#bits').classList.add('open');
   else {
     if (name === 'style') drawerTab = 'style';
@@ -608,8 +689,10 @@ function streak() {
 function renderStreak() { const n = streak(); $('#streak').textContent = n ? `🔥 ${n}` : ''; }
 
 const thumbOf = e => {
-  const s = e.stickers?.find(x => x.s[0] === 'p' || (x.s[0] === 'c' && custom[x.s.slice(2)]));
-  return s ? (s.s[0] === 'p' ? '/stickers/' + s.s.slice(2) : custom[s.s.slice(2)]) : '';
+  const s = e.stickers?.find(x => 'pr'.includes(x.s[0]) || (x.s[0] === 'c' && custom[x.s.slice(2)]));
+  if (!s) return '';
+  const v = s.s.slice(2);
+  return s.s[0] === 'p' ? '/stickers/' + v : s.s[0] === 'r' ? photo(v)?.src || '' : custom[v];
 };
 
 function renderCal() {
@@ -629,7 +712,7 @@ $('#calNext').onclick = () => { calMonth = new Date(calMonth.getFullYear(), calM
 
 const memo = e => {
   const d = parse(e.id), mood = moods().find(x => x[0] === e.mood)?.[1] || '', thumb = thumbOf(e);
-  const meta = [mood + (e.weather || ''), e.song && '🎧 ' + e.song].filter(Boolean).map(esc).join('  ');
+  const meta = [mood + (e.weather || ''), e.voice?.length && '🎙 ' + e.voice.length, e.song && '🎧 ' + e.song].filter(Boolean).map(esc).join('  ');
   const font = FONTS.includes(e.pen?.font) ? e.pen.font : 'Gaegu';
   return `<button class="memo" data-d="${e.id}" style="--hand:'${font}'">
     <span class="memo-date"><b>${d.getDate()}</b>${d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
@@ -712,7 +795,7 @@ $('#mine').onclick = async e => {
     return toast(settings.buddy ? 'New buddy! ⭐' : 'Buddy reset to your theme');
   }
   const id = e.target.closest('[data-del]')?.dataset.del;
-  if (!id || !confirm('Delete this sticker? It disappears from every page.')) return;
+  if (!id || !(await ask('Delete this sticker?', 'It disappears from every page it’s on.', 'Delete'))) return;
   try {
     await api('stickers?id=' + encodeURIComponent(id), { method: 'DELETE' });
     delete custom[id];
@@ -723,8 +806,16 @@ $('#mine').onclick = async e => {
 
 /* ---------- garden ---------- */
 
-let seed = { kind: 'rose', color: 'red' };
-const STAGES = ['Seed', 'Sprout', 'Leaves', 'Bud'];
+let seed = GROWABLE[0];
+const STAGES = ['Seed', 'Sprout', 'Sapling', 'Young plant', 'Full grown'];
+const plantDef = kind => (kind?.startsWith('c:') ? (settings.plants || []).find(d => 'c:' + d.id === kind) : null);
+const plantName = kind => plantDef(kind)?.name || photo(kind)?.name || 'Plant';
+function plantPic(kind, stage) {
+  const d = plantDef(kind);
+  if (!d) return plantImg(photo(kind) ? kind : 'rose-pink', stage);
+  const src = custom[d.stages[stage]];
+  return src ? `<img src="${esc(src)}" class="stage custom" style="width:${40 + stage * 14}%" alt="">` : '';
+}
 const gardenData = () => (entries.garden ??= { id: 'garden', plants: [], stickers: [] });
 const ago = d => (d ? Math.round((parse(iso(new Date())) - parse(d)) / 864e5) : 0);
 
@@ -739,42 +830,81 @@ function renderGarden() {
     ? `${g.plants.length} plant${g.plants.length > 1 ? 's' : ''}, ${blooming} blooming`
     : 'Nothing planted yet. Plant your first seed!';
   $('#bed').innerHTML = g.plants.map((p, i) => {
-    const kind = KINDS[p.kind] ? p.kind : 'rose', stage = Math.max(0, Math.min(4, +p.stage || 0));
+    const kind = plantDef(p.kind) || photo(p.kind) ? p.kind : 'rose-pink', stage = Math.max(0, Math.min(4, +p.stage || 0));
     const watered = p.last === t, thirsty = !watered && ago(p.last || p.planted) >= 3;
     const status = watered ? (stage >= 4 ? 'Blooming and happy' : 'Watered today')
-      : thirsty ? 'Very thirsty!' : stage >= 4 ? 'In full bloom' : `${STAGES[stage]}, needs water`;
+      : thirsty ? 'Very thirsty!' : stage >= 4 ? 'Fully grown' : `${STAGES[stage]}, needs water`;
     return `<div class="plot${thirsty ? ' thirsty' : ''}" data-i="${i}">
       <button class="pull" data-pull="${i}" aria-label="Pull out this plant">✕</button>
-      <div class="plant">${plantSVG(kind, p.color, stage)}</div><div class="pot"></div>
-      <b>${esc((p.color || '') + ' ' + KINDS[kind].name.toLowerCase())}</b><small>${status}</small>
+      <div class="plant">${plantPic(kind, stage)}</div>
+      <b>${esc(plantName(kind))}</b><small>${status}</small>
       <div class="row">${watered ? '<button class="btn small ghost-btn" disabled>Watered ✓</button>' : `<button class="btn small" data-water="${i}">💧 Water</button>`}
       ${stage >= 4 ? `<button class="btn small ghost-btn" data-pick="${i}">Pick 🌸</button>` : ''}</div></div>`;
   }).join('');
 }
 
 function renderSeeds() {
-  if (!KINDS[seed.kind].colors.includes(seed.color)) seed.color = KINDS[seed.kind].colors[0];
-  $('#seedKinds').innerHTML = Object.entries(KINDS).map(([k, v]) =>
-    `<button data-kind="${k}" aria-pressed="${seed.kind === k}">${flowerSVG(k, k === seed.kind ? seed.color : v.colors[0])}${v.name}</button>`).join('');
-  $('#seedColors').innerHTML = KINDS[seed.kind].colors.map(c => `<button data-color="${c}" aria-pressed="${seed.color === c}" style="--c:${COLORS[c]}"><i></i>${c}</button>`).join('');
+  const mine = (settings.plants || []).filter(d => custom[d.stages[4]]).map(d =>
+    `<button data-kind="c:${esc(d.id)}" aria-pressed="${seed === 'c:' + d.id}" class="mine-plant"><img src="${esc(custom[d.stages[4]])}" alt="">${esc(d.name)}<span data-delplant="${esc(d.id)}" aria-label="Delete this plant type">✕</span></button>`);
+  $('#seedKinds').innerHTML = mine.join('') + GROWABLE.map(id => `<button data-kind="${id}" aria-pressed="${seed === id}">${photoImg(id)}${esc(photo(id).name)}</button>`).join('');
 }
 
 $('#plantBtn').onclick = () => { $('#seedPicker').hidden = false; renderSeeds(); $('#seedPicker').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
 $('#seedCancel').onclick = () => ($('#seedPicker').hidden = true);
-$('#seedPicker').onclick = e => {
-  const k = e.target.closest('[data-kind]')?.dataset.kind, c = e.target.closest('[data-color]')?.dataset.color;
-  if (k) seed.kind = k;
-  if (c) seed.color = c;
-  if (k || c) renderSeeds();
+$('#seedPicker').onclick = async e => {
+  const del = e.target.closest('[data-delplant]')?.dataset.delplant;
+  if (del) {
+    if (await ask('Delete this plant type?', 'Plants of this kind already in your garden stay put.', 'Delete')) saveSettings({ plants: (settings.plants || []).filter(d => d.id !== del) });
+    return renderSeeds();
+  }
+  const k = e.target.closest('[data-kind]')?.dataset.kind;
+  if (k) { seed = k; renderSeeds(); }
+};
+
+let pm = null;
+function renderPM() {
+  $('#pmSlots').innerHTML = STAGES.map((l, i) => {
+    const v = pm.stages[i];
+    return `<button class="pm-slot${v ? ' has' : ''}" data-slot="${i}">${v === 'busy' ? '<span class="spinner"></span>' : v ? `<img src="${esc(v)}" alt="" style="width:${40 + i * 14}%">` : '<i>+</i>'}<small>${i + 1}. ${l}${i === 4 ? ' *' : ''}</small></button>`;
+  }).join('');
+}
+$('#customPlantBtn').onclick = () => { pm = { stages: Array(5).fill(null) }; $('#pmName').value = ''; renderPM(); $('#seedPicker').hidden = true; $('#plantMaker').hidden = false; };
+$('#pmCancel').onclick = () => { pm = null; $('#plantMaker').hidden = true; };
+$('#pmSlots').onclick = e => { const s = e.target.closest('[data-slot]'); if (s && pm.stages[+s.dataset.slot] !== 'busy') { pm.slot = +s.dataset.slot; $('#pmFile').click(); } };
+$('#pmFile').onchange = async e => {
+  const f = e.target.files[0], i = pm.slot;
+  e.target.value = '';
+  if (!f) return;
+  pm.stages[i] = 'busy'; renderPM();
+  try { pm.stages[i] = await makeSticker(f); }
+  catch (err) { pm.stages[i] = null; toast('Couldn’t use that picture: ' + err.message); }
+  renderPM();
+};
+$('#pmSave').onclick = async () => {
+  if (!pm.stages[4] || pm.stages[4] === 'busy' || pm.stages.includes('busy')) return toast('Add a picture for the last stage (Full grown) first.');
+  const name = $('#pmName').value.trim() || 'My plant', up = {};
+  try {
+    for (let i = 0; i < 5; i++) if (pm.stages[i]) {
+      const { id } = await api('stickers', { method: 'POST', body: JSON.stringify({ src: pm.stages[i], pack: '_plant' }) });
+      custom[id] = pm.stages[i]; packs[id] = '_plant'; up[i] = id;
+    }
+    // Missing stages borrow the nearest earlier picture, or the next one up.
+    const stages = [0, 1, 2, 3, 4].map(i => { for (let j = i; j >= 0; j--) if (up[j]) return up[j]; for (let j = i; j < 5; j++) if (up[j]) return up[j]; });
+    const def = { id: 'u' + Date.now().toString(36), name, stages };
+    saveSettings({ plants: [...(settings.plants || []), def] });
+    pm = null; $('#plantMaker').hidden = true;
+    seed = 'c:' + def.id; $('#seedPicker').hidden = false; renderSeeds();
+    toast(`${name} is ready. Plant it! 🌱`);
+  } catch (err) { if (err.message !== 'locked') toast('Couldn’t save the plant: ' + err.message); }
 };
 $('#seedPlant').onclick = () => {
   const g = gardenData();
   if (g.plants.length >= 24) return toast('Your garden is full. Pull a plant out to make room.');
-  g.plants.push({ id: Date.now().toString(36), kind: seed.kind, color: seed.color, stage: 0, last: '', planted: iso(new Date()) });
+  g.plants.push({ id: Date.now().toString(36), kind: seed, stage: 0, last: '', planted: iso(new Date()) });
   saveGarden(); $('#seedPicker').hidden = true; renderGarden();
-  toast('Seed planted 🌱 Water it every day!');
+  toast(`${plantName(seed)} planted 🌱 Water it every day!`);
 };
-$('#bed').onclick = e => {
+$('#bed').onclick = async e => {
   const q = a => e.target.closest(`[${a}]`)?.getAttribute(a);
   const w = q('data-water'), pk = q('data-pick'), pull = q('data-pull'), g = gardenData();
   if (w != null) {
@@ -785,16 +915,275 @@ $('#bed').onclick = e => {
     const plot = $(`.plot[data-i="${w}"]`);
     plot.insertAdjacentHTML('beforeend', `<div class="drops">${Array.from({ length: 8 }, (_, k) => `<i style="left:${28 + k * 6}%;animation-delay:${k * 70}ms"></i>`).join('')}</div>`);
     if (grew) plot.classList.add('grew');
-    toast(grew && p.stage === 4 ? `Your ${KINDS[p.kind].name.toLowerCase()} bloomed! 🌸` : 'Glug glug 💧');
+    toast(grew && p.stage === 4 ? `Your ${plantName(p.kind).toLowerCase()} is fully grown! 🌳` : 'Glug glug 💧');
   } else if (pk != null) {
     const p = g.plants[pk];
     show('write', iso(new Date()));
-    addSticker(`f:${p.kind}:${p.color}`);
+    const d = plantDef(p.kind);
+    addSticker(d ? 'c:' + d.stages[4] : 'r:' + p.kind);
     toast('Picked for today’s page 🌷');
-  } else if (pull != null && confirm('Pull out this plant? It can’t be undone.')) {
+  } else if (pull != null && (await ask('Pull out this plant?', 'It leaves your garden for good.', 'Pull it out'))) {
     g.plants.splice(+pull, 1); saveGarden(); renderGarden();
   }
 };
+
+/* ---------- pop-ups, music ---------- */
+
+function ask(title, text, yes = 'Delete', no = 'Keep it') {
+  const d = $('#ask');
+  $('#askTitle').textContent = title; $('#askText').textContent = text;
+  $('#askYes').textContent = yes; $('#askNo').textContent = no;
+  $('#askBuddy').innerHTML = $('#buddy').innerHTML;
+  d.returnValue = '';
+  d.showModal(); $('#askNo').focus();
+  return new Promise(r => d.addEventListener('close', () => r(d.returnValue === 'yes'), { once: true }));
+}
+$('#ask').addEventListener('click', e => { if (e.target === $('#ask')) $('#ask').close(); });
+
+const musicOn = () => local.get('diary-music') !== 'off';
+function setMusic(on, play = true) {
+  local.set('diary-music', on ? 'on' : 'off');
+  if (play) on ? startMusic() : stopMusic();
+  const b = $('#musicBtn');
+  b.setAttribute('aria-pressed', on); b.setAttribute('aria-label', on ? 'Mute music' : 'Play music'); b.classList.toggle('muted', !on);
+  $('#musicToggle').checked = on;
+}
+$('#musicBtn').onclick = () => { setMusic(!musicOn()); toast(musicOn() ? 'Music on 🎶' : 'Music off'); };
+$('#musicToggle').onchange = e => setMusic(e.target.checked);
+document.addEventListener('pointerdown', e => { if (musicOn() && !e.target.closest('#musicBtn')) startMusic(); }, { once: true });
+setMusic(musicOn(), false);
+
+/* ---------- drawing ---------- */
+
+const DCOLORS = ['ink', '#E8558B', '#E0314B', '#FF8F3C', '#F4C430', '#2F9E6E', '#3A7BD5', '#8B5CF6', '#222222', '#FFFFFF'];
+const DSIZES = [0.35, 0.75, 1.5];
+const PENS = [['pen', '✒️ Pen'], ['marker', '🖍 Marker'], ['eraser', '🧽 Eraser']];
+let drawing = false, stroke = null;
+const brush = { pen: 'pen', color: 'ink', size: 1 };
+
+const inkPath = s => {
+  const p = s.p;
+  if (p.length < 4) return `M${p[0]} ${p[1]}l0 .01`;
+  let d = `M${p[0]} ${p[1]}`;
+  for (let i = 2; i < p.length - 2; i += 2) d += `Q${p[i]} ${p[i + 1]} ${((p[i] + p[i + 2]) / 2).toFixed(1)} ${((p[i + 1] + p[i + 3]) / 2).toFixed(1)}`;
+  return d + `L${p.at(-2)} ${p.at(-1)}`;
+};
+const strokeEl = s => `<path d="${inkPath(s)}" stroke="${HEX.test(s.c) ? s.c : 'var(--pen, var(--ink))'}" stroke-width="${+s.w || 0.75}"${s.m ? ' opacity=".38"' : ''} fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+const inkSVG = () => `<svg class="ink" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet">${(entry.ink || []).filter(s => Array.isArray(s.p) && s.p.length >= 2).map(strokeEl).join('')}</svg>`;
+const redrawInk = () => { const svg = $('#layer .ink'); if (svg) svg.outerHTML = inkSVG(); };
+const pagePt = e => { const r = $('#layer').getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 1000) / 10, Math.round(((e.clientY - r.top) / r.width) * 1000) / 10]; };
+
+function renderDrawbar() {
+  $('#dbPens').innerHTML = PENS.map(([v, l]) => `<button data-pen="${v}" aria-pressed="${brush.pen === v}">${l}</button>`).join('');
+  $('#dbColors').innerHTML = DCOLORS.map(c => `<button class="dot" data-dcolor="${c}" aria-pressed="${brush.color === c}" style="--c:${c === 'ink' ? 'var(--ink)' : c}" aria-label="Color ${c}"></button>`).join('');
+  $('#dbSizes').innerHTML = DSIZES.map((s, i) => `<button data-dsize="${i}" aria-pressed="${brush.size === i}" aria-label="Brush size ${i + 1}"><i style="--d:${6 + i * 6}px"></i></button>`).join('');
+}
+
+function toggleDraw(on) {
+  drawing = on;
+  select(null); closeSheets();
+  $('#layer').classList.toggle('drawing', on);
+  $('#drawbar').hidden = !on;
+  $('#drawBtn').classList.toggle('on', on);
+  document.body.classList.toggle('editing', on);
+  if (on) { renderDrawbar(); toast('Draw anywhere on the page ✏️'); }
+}
+$('#drawBtn').onclick = () => toggleDraw(!drawing);
+$('#drawbar').onclick = async e => {
+  const q = a => e.target.closest(`[${a}]`)?.getAttribute(a);
+  const pen = q('data-pen'), c = q('data-dcolor'), size = q('data-dsize'), act = q('data-d');
+  if (pen) brush.pen = pen;
+  if (c) { brush.color = c; if (brush.pen === 'eraser') brush.pen = 'pen'; }
+  if (size != null) brush.size = +size;
+  if (act === 'undo' && entry.ink?.length) { entry.ink.pop(); redrawInk(); changed(); }
+  if (act === 'clear' && entry.ink?.length && (await ask('Clear your drawing?', 'Every line on this page will be erased.', 'Clear it'))) { entry.ink = []; redrawInk(); changed(); }
+  if (act === 'done') return toggleDraw(false);
+  renderDrawbar();
+};
+
+function eraseAt(x, y) {
+  const before = entry.ink.length;
+  entry.ink = entry.ink.filter(s => { for (let i = 0; i < s.p.length; i += 2) if (Math.hypot(s.p[i] - x, s.p[i + 1] - y) < 2 + s.w / 2) return false; return true; });
+  if (entry.ink.length !== before) redrawInk();
+}
+$('#layer').addEventListener('pointerdown', e => {
+  if (!drawing) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  try { $('#layer').setPointerCapture(e.pointerId); } catch {}
+  entry.ink ??= [];
+  const [x, y] = pagePt(e);
+  if (brush.pen === 'eraser') { stroke = { erase: true }; return eraseAt(x, y); }
+  stroke = { c: brush.color, w: DSIZES[brush.size] * (brush.pen === 'marker' ? 3.2 : 1), p: [x, y], ...(brush.pen === 'marker' && { m: 1 }) };
+  $('#layer .ink').insertAdjacentHTML('beforeend', strokeEl(stroke));
+  stroke.el = $('#layer .ink').lastElementChild;
+}, true);
+$('#layer').addEventListener('pointermove', e => {
+  if (!drawing || !stroke) return;
+  e.stopImmediatePropagation();
+  for (const ev of e.getCoalescedEvents?.() || [e]) {
+    const [x, y] = pagePt(ev);
+    if (stroke.erase) eraseAt(x, y);
+    else if (Math.hypot(x - stroke.p.at(-2), y - stroke.p.at(-1)) > 0.25) stroke.p.push(x, y);
+  }
+  if (!stroke.erase) stroke.el.setAttribute('d', inkPath(stroke));
+}, true);
+const endStroke = e => {
+  if (!drawing || !stroke) return;
+  e.stopImmediatePropagation();
+  if (!stroke.erase) { const { el, ...s } = stroke; entry.ink.push(s); }
+  stroke = null; changed();
+};
+$('#layer').addEventListener('pointerup', endStroke, true);
+$('#layer').addEventListener('pointercancel', endStroke, true);
+
+/* ---------- page style bar ---------- */
+
+const TINTS = [['', 'Theme'], ['#FFF4F8', 'Blush'], ['#F1F7FF', 'Sky'], ['#F1FBF3', 'Mint'], ['#FFF9E6', 'Butter'], ['#F6F1FF', 'Lilac'], ['#FFF2E8', 'Peach'], ['#FFFFFF', 'White']];
+
+function renderPageTools() {
+  const p = entry.pen, sz = SIZES.find(s => s[0] === p.size) || SIZES[1];
+  const font = FONTS.includes(p.font) ? p.font : 'Gaegu';
+  $('[data-menu=font] b').textContent = font; $('[data-menu=font] b').style.fontFamily = `'${font}', cursive`;
+  $('[data-menu=size] b').textContent = sz[1];
+  $('[data-menu=paper] b').innerHTML = `<i class="mini p-${entry.paper}"></i>${PAPERS.find(x => x[0] === entry.paper)?.[1] || 'Lined'}`;
+  $('#ptInk').innerHTML = INKS.map(([v, l]) => `<button data-ink="${v}" aria-pressed="${p.ink === v}" style="--c:${v || 'var(--ink)'}" title="${l}" aria-label="${l}"></button>`).join('');
+  $('#ptTint').innerHTML = TINTS.map(([v, l]) => `<button class="tint" data-tint="${v}" aria-pressed="${(entry.tint || '') === v}" style="--c:${v || 'var(--paper)'}" title="${l} page" aria-label="${l} page"></button>`).join('');
+  $('.pt-paper').hidden = entry.id === BOARD;
+}
+
+let menuOpen = null;
+function closeMenu() { menuOpen = null; $('#ptMenu').hidden = true; applyPen(); }
+function openMenu(kind, anchor) {
+  if (menuOpen === kind) return closeMenu();
+  const m = $('#ptMenu'), p = entry.pen;
+  menuOpen = kind;
+  m.innerHTML = kind === 'font'
+    ? FONTS.map(f => `<button role="option" data-pick="${f}" aria-selected="${p.font === f}" style="font-family:'${f}',cursive"><b>Dear diary, today was lovely</b><small>${f}</small></button>`).join('')
+    : kind === 'size'
+      ? SIZES.map(([v, l, fs]) => `<button role="option" data-pick="${v}" aria-selected="${p.size === v}" style="font-family:'${p.font}',cursive"><b style="font-size:${fs}px">Dear diary</b><small>${l}</small></button>`).join('')
+      : PAPERS.map(([v, l]) => `<button role="option" data-pick="${v}" aria-selected="${entry.paper === v}"><i class="swatch p-${v}"></i><small>${l}</small></button>`).join('');
+  m.className = 'pt-menu pt-menu-' + kind;
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = Math.min(r.bottom + 8, innerHeight - m.offsetHeight - 8) + 'px';
+}
+$('#pagetools').addEventListener('click', e => { const b = e.target.closest('[data-menu]'); if (b) openMenu(b.dataset.menu, b); });
+// Hovering an option previews it on the page; leaving the menu puts the real choice back.
+$('#ptMenu').addEventListener('pointerover', e => {
+  const v = e.target.closest('[data-pick]')?.dataset.pick, st = $('#paper').style;
+  if (!v) return;
+  if (menuOpen === 'font') st.setProperty('--hand', `'${v}'`);
+  if (menuOpen === 'size') { const s = SIZES.find(x => x[0] === v); st.setProperty('--fs', s[2]); st.setProperty('--lh', s[3]); }
+  if (menuOpen === 'paper') $('#body').className = 'body p-' + v;
+});
+$('#ptMenu').addEventListener('pointerleave', () => { applyPen(); renderFeel(); });
+$('#ptMenu').onclick = e => {
+  const v = e.target.closest('[data-pick]')?.dataset.pick;
+  if (!v) return;
+  if (menuOpen === 'font') setPen({ font: v });
+  else if (menuOpen === 'size') setPen({ size: v });
+  else { entry.paper = v; renderFeel(); renderDrawer(); renderPageTools(); changed(); }
+  closeMenu();
+};
+document.addEventListener('pointerdown', e => { if (menuOpen && !e.target.closest('#ptMenu, [data-menu]')) closeMenu(); });
+$('#ptInk').onclick = e => { const v = e.target.closest('[data-ink]')?.dataset.ink; if (v != null) setPen({ ink: v }); };
+$('#ptTint').onclick = e => {
+  const v = e.target.closest('[data-tint]')?.dataset.tint;
+  if (v == null) return;
+  entry.tint = v; applyPen(); renderPageTools(); changed();
+};
+
+/* ---------- rich text: select words, then style them ---------- */
+
+const TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'FONT', 'BR', 'DIV', 'P']);
+const CSS_OK = ['color', 'background-color', 'font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-decoration-line'];
+function cleanHTML(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html || '';
+  const walk = node => {
+    for (const n of [...node.childNodes]) {
+      if (n.nodeType === 3) continue;
+      if (n.nodeType !== 1) { n.remove(); continue; }
+      if (!TAGS.has(n.tagName)) {
+        if (/^(SCRIPT|STYLE|IFRAME|OBJECT|EMBED|IMG|SVG|VIDEO|AUDIO)$/.test(n.tagName)) n.remove();
+        else { walk(n); n.replaceWith(...n.childNodes); }
+        continue;
+      }
+      const keep = [];
+      for (const p of CSS_OK) {
+        const v = n.style.getPropertyValue(p);
+        if (v && /^[#(),.%\w\s'"-]+$/.test(v) && !/url|expression/i.test(v)) keep.push(`${p}:${v}`);
+      }
+      const color = n.getAttribute('color');
+      if (color && /^#[0-9a-f]{3,8}$/i.test(color)) keep.push(`color:${color}`);
+      const face = (n.getAttribute('face') || '').replace(/['"]/g, '');
+      if (FONTS.includes(face)) keep.push(`font-family:'${face}'`);
+      for (const at of [...n.attributes]) n.removeAttribute(at.name);
+      if (keep.length) n.setAttribute('style', keep.join(';'));
+      walk(n);
+    }
+  };
+  walk(t.content);
+  return t.innerHTML;
+}
+
+const TEXT_COLORS = ['#5B3A47', '#E8558B', '#E0314B', '#FF7A30', '#D9A400', '#2F9E6E', '#14A3A3', '#3A7BD5', '#8B5CF6', '#B5651D', '#222222', '#A0A0A0'];
+const HIGHLIGHTS = ['#FFD6E5', '#FFF19A', '#CFF3DA', '#D4E6FF', '#E8DBFF', '#FFDDC2'];
+let saved = null;
+$('#fmt').innerHTML = `
+  <div class="fmt-row">
+    <button data-f="bold" aria-label="Bold"><b>B</b></button><button data-f="italic" aria-label="Italic"><i>I</i></button>
+    <button data-f="underline" aria-label="Underline"><u>U</u></button><button data-f="strikeThrough" aria-label="Strikethrough"><s>S</s></button>
+    <span class="sep"></span><button data-f="smaller" aria-label="Smaller">A<sup>−</sup></button><button data-f="bigger" aria-label="Bigger">A<sup>+</sup></button>
+    <span class="sep"></span><button data-f="fonts" class="fmt-font" aria-label="Font for selection">Aa ▾</button><button data-f="removeFormat" aria-label="Clear style">⌫</button>
+  </div>
+  <div class="fmt-row">${TEXT_COLORS.map(c => `<button class="sw" data-color="${c}" style="--c:${c}" aria-label="Text color ${c}"></button>`).join('')}
+    <label class="sw any" title="Any color" aria-label="Pick any color"><input type="color" id="fmtAny" value="#e8558b"></label></div>
+  <div class="fmt-row"><span class="lbl">Highlight</span>${HIGHLIGHTS.map(c => `<button class="sw hl" data-hl="${c}" style="--c:${c}" aria-label="Highlight ${c}"></button>`).join('')}
+    <button class="sw none" data-hl="transparent" aria-label="No highlight">⦸</button></div>
+  <div class="fmt-fonts" hidden>${FONTS.map(f => `<button data-font="${f}" style="font-family:'${f}',cursive">${f}</button>`).join('')}</div>`;
+
+const inBody = n => n && $('#body').contains(n.nodeType === 1 ? n : n.parentNode);
+function placeFmt() {
+  const f = $('#fmt');
+  f.hidden = false;
+  if (mobile()) return;
+  const r = saved.getBoundingClientRect();
+  f.style.left = Math.max(8, Math.min(r.left + r.width / 2 - f.offsetWidth / 2, innerWidth - f.offsetWidth - 8)) + 'px';
+  f.style.top = (r.top - f.offsetHeight - 12 > 70 ? r.top - f.offsetHeight - 12 : r.bottom + 12) + 'px';
+}
+document.addEventListener('selectionchange', () => {
+  const s = getSelection();
+  if (s.rangeCount && !s.isCollapsed && inBody(s.anchorNode) && inBody(s.focusNode)) { saved = s.getRangeAt(0).cloneRange(); placeFmt(); }
+  else if (!$('#fmt').contains(document.activeElement)) $('#fmt').hidden = true;
+});
+function style(cmd, val) {
+  if (!saved) return;
+  const s = getSelection();
+  s.removeAllRanges(); s.addRange(saved);
+  document.execCommand('styleWithCSS', false, true);
+  if (cmd === 'hiliteColor' && !document.execCommand('hiliteColor', false, val)) document.execCommand('backColor', false, val);
+  else if (cmd === 'bigger' || cmd === 'smaller') {
+    document.execCommand('styleWithCSS', false, false);
+    document.execCommand('fontSize', false, '7');
+    $$('#body font[size="7"]').forEach(f => { const sp = document.createElement('span'); sp.style.fontSize = cmd === 'bigger' ? '1.3em' : '0.8em'; sp.append(...f.childNodes); f.replaceWith(sp); });
+  } else document.execCommand(cmd, false, val);
+  if (s.rangeCount) saved = s.getRangeAt(0).cloneRange();
+  $('#body').dispatchEvent(new Event('input'));
+}
+$('#fmt').addEventListener('pointerdown', e => { if (!e.target.closest('input')) e.preventDefault(); });
+$('#fmt').addEventListener('mousedown', e => { if (!e.target.closest('input')) e.preventDefault(); });
+$('#fmt').addEventListener('click', e => {
+  const q = a => e.target.closest(`[${a}]`)?.getAttribute(a);
+  const f = q('data-f'), c = q('data-color'), hl = q('data-hl'), font = q('data-font');
+  if (f === 'fonts') { $('.fmt-fonts').hidden = !$('.fmt-fonts').hidden; return placeFmt(); }
+  if (f) style(f);
+  if (c) style('foreColor', c);
+  if (hl) style('hiliteColor', hl);
+  if (font) { style('fontName', font); $('.fmt-fonts').hidden = true; }
+});
+$('#fmtAny').addEventListener('input', e => style('foreColor', e.target.value));
 
 /* ---------- shell ---------- */
 

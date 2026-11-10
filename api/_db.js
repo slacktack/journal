@@ -31,6 +31,11 @@ export async function all(hash) {
   return out;
 }
 
+export async function get(hash, id) {
+  if (URL_) { const v = await redis('HGET', hash, id); return v ? JSON.parse(v) : null; }
+  return (await load())[hash]?.[id] ?? null;
+}
+
 export async function put(hash, id, obj) {
   if (URL_) return redis('HSET', hash, id, JSON.stringify(obj));
   const db = await load();

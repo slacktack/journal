@@ -8,6 +8,7 @@ for (const k of ['KV_REST_API_URL', 'UPSTASH_REDIS_REST_URL', 'VERCEL']) delete 
 process.chdir(mkdtempSync(join(tmpdir(), 'diary-')));
 const entries = (await import(new URL('./api/entries.js', import.meta.url))).default;
 const settings = (await import(new URL('./api/settings.js', import.meta.url))).default;
+const voice = (await import(new URL('./api/voice.js', import.meta.url))).default;
 const stickers = (await import(new URL('./api/stickers.js', import.meta.url))).default;
 
 const call = (h, { method = 'GET', key = 'kitty♡', body, query = {} } = {}) => new Promise(resolve => {
@@ -49,4 +50,14 @@ test('settings save and load', async () => {
   await call(settings, { method: 'PUT', body: { theme: 'cloud' } });
   assert.deepEqual((await call(settings)).body, { theme: 'cloud' });
   assert.equal((await call(settings, { method: 'PUT', body: 'x' })).code, 400);
+});
+
+test('voice notes save, load and delete', async () => {
+  assert.equal((await call(voice, { method: 'POST', body: { src: 'data:text/html;base64,AAAA' } })).code, 400);
+  const src = 'data:audio/webm;codecs=opus;base64,GkXfo0AAAA==';
+  const { body } = await call(voice, { method: 'POST', body: { src } });
+  assert.equal((await call(voice, { query: { id: body.id } })).body.src, src);
+  assert.equal((await call(voice, { query: { id: body.id }, key: 'other-diary' })).code, 404);
+  await call(voice, { method: 'DELETE', query: { id: body.id } });
+  assert.equal((await call(voice, { query: { id: body.id } })).code, 404);
 });
